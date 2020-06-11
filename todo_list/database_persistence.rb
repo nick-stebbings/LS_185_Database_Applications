@@ -1,6 +1,4 @@
 require 'pg'
-require 'pry'
-
 class DatabasePersistence
   def initialize(logger)
     @db = PG.connect(dbname: "todos")
@@ -13,24 +11,36 @@ class DatabasePersistence
   end
 
   def all_lists
-    sql = "SELECT * FROM lists"
+    sql = <<~SQL
+      SELECT l.*,
+      COUNT(l.id) AS todos_count,
+      COUNT(NULLIF(t.completed, true)) AS  todos_remaining_count
+      FROM lists l
+      LEFT JOIN todos t ON (t.list_id = l.id)
+      GROUP BY l.id
+      ORDER BY l.name;
+    SQL
     result = query(sql)
-
     result.map do |tuple|
-      list_id = tuple["id"].to_i
-      todos = all_todos_from(list_id)
-      { id: list_id, name: tuple["name"], todos: todos }
+      tuple_to_list_hash(tuple)
     end
   end
 
   def find_list(id)
+    sql = <<~SQL
+      SELECT l.*,
+      COUNT(l.id) AS todos_count,
+      COUNT(NULLIF(t.completed, true)) AS  todos_remaining_count
+      FROM lists l
+      WHERE l.id = $1
+      LEFT JOIN todos t ON (t.list_id = l.id)
+      GROUP BY l.id
+      ORDER BY l.name;
+    SQL
+
     sql = "SELECT * FROM lists WHERE id = $1"
     result = query(sql, id)
-    tuple = result.first
-    list_id = tuple["id"].to_i
-    todos = all_todos_from(id)
-
-    { id: list_id, name: tuple["name"], todos: todos }
+    tuple_to_list_hash(result.first)
   end
 
   def create_new_list(list_name)
@@ -69,8 +79,6 @@ class DatabasePersistence
     sql = "UPDATE todos SET completed = true WHERE list_id = $1"
     query(sql, list_id)
   end
-  
-  private
 
   def all_todos_from(list_id)
     sql = "SELECT * FROM todos WHERE list_id = $1"
@@ -78,5 +86,15 @@ class DatabasePersistence
     result.map do |tuple|
       { id: tuple["id"].to_i, name: tuple["name"], completed: (tuple["completed"] == 't'), list_id: tuple["list_id"] }
     end
+  end
+
+  private
+
+  def tuple_to_list_hash(tuple)
+   {                     id: tuple["id"].to_i,
+                       name: tuple["name"],
+                todos_count: tuple["todos_count"].to_i,
+      todos_remaining_count: tuple["todos_remaining_count"].to_i
+    }
   end
 end
