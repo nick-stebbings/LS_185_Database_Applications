@@ -1,5 +1,4 @@
 require "sinatra"
-require "sinatra/reloader"
 require "sinatra/content_for"
 require "tilt/erubis"
 
@@ -9,6 +8,11 @@ configure do
   enable :sessions
   set :session_secret, "secret"
   set :erb, escape_html: true
+end
+
+configure(:development) do
+  require "sinatra/reloader"
+  also_reload "database_persistence.rb"
 end
 
 helpers do
@@ -46,7 +50,6 @@ end
 def load_list(id)
   list = @storage.find_list(id)
   return list if list
-
   session[:error] = "The specified list was not found."
   redirect "/lists"
 end
@@ -68,7 +71,7 @@ def error_for_todo(name)
 end
 
 before do
-  @storage = DatabasePersistence.new
+  @storage = DatabasePersistence.new(logger)
 end
 
 get "/" do
